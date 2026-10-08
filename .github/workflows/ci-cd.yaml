@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: actions/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry (GHCR)
         if: github.event_name != 'pull_request'
@@ -99,7 +99,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,format=long
+            type=sha,format=long,prefix=
+            type=sha,format=long,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and Push Docker Image
@@ -114,6 +115,9 @@ jobs:
 
       - name: Trivy Container Image Vulnerability Scan
         uses: aquasecurity/trivy-action@master
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           scan-type: "image"
