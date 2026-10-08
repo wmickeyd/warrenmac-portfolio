@@ -61,3 +61,4 @@ def test_indirect_injection_pattern_matching():
     for text in malicious_texts:
         matched = any(re.search(pat, text) for pat in INDIRECT_INJECTION_PATTERNS)
         assert matched is True
+

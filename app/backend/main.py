@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     watcher_task.cancel()
 
 app = FastAPI(
-    title="Warren Mac - AI DevSecOps Portfolio",
+    title="Warren McDonald - AI DevSecOps Portfolio",
     description="Fortified AI Resume Agent on Kubernetes with OWASP LLM Guardrails",
     version="1.0.0",
     lifespan=lifespan

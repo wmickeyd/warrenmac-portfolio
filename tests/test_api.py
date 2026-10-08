@@ -57,3 +57,4 @@ def test_chat_blocks_prompt_injection():
 def test_chat_rejects_empty_message():
     response = client.post("/api/chat", json={"message": "   "})
     assert response.status_code == 400
+

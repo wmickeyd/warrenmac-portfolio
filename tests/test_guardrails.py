@@ -67,3 +67,4 @@ def test_rate_limiter_denial_of_wallet_protection():
     assert limiter.is_allowed(test_ip) is True
     # 4th request must be rejected
     assert limiter.is_allowed(test_ip) is False
+
