@@ -15,7 +15,7 @@ GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEM
 
 def _build_system_instructions() -> str:
     active_resume = get_current_resume()
-    return f"""You are the official AI representative for Warren Mac (warrenmac.com), an AI DevSecOps Engineer.
+    return f"""You are the official AI representative for Warren McDonald (warrenmac.com), an AI DevSecOps Engineer.
 Your mission is to answer questions from hiring managers, recruiters, and engineers about Warren's professional background, skills, architecture choices, and projects.
 
 KNOWLEDGE BASE (LIVE INGESTED RESUME):

@@ -134,3 +134,4 @@ jobs:
         run: |
           echo "Signing image with digest ${DIGEST} via GitHub OIDC..."
           cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+

@@ -32,3 +32,4 @@ k8s/secret.yaml
 .vscode/
 .idea/
 *.swp
+
