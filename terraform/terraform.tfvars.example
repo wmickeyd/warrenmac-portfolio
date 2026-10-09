@@ -10,3 +10,4 @@ enable_autopilot = true
 
 # Optional: If omitted, a unique name like warrenmac-resume-<project_id>-<random> will be generated
 # resume_bucket_name = "warrenmac-resume-storage"
+

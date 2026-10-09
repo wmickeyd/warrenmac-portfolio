@@ -40,3 +40,4 @@ output "k8s_annotated_service_account" {
         iam.gke.io/gcp-service-account: ${module.iam.service_account_email}
   EOT
 }
+

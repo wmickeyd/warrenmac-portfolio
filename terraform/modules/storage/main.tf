@@ -31,3 +31,4 @@ resource "google_storage_bucket" "resume_bucket" {
     application = "warrenmac-portfolio"
   }
 }
+

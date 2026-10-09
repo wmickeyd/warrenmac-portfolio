@@ -42,3 +42,4 @@ resource "google_secret_manager_secret_iam_member" "secret_accessor" {
   member    = "serviceAccount:${google_service_account.portfolio_agent.email}"
   project   = var.project_id
 }
+

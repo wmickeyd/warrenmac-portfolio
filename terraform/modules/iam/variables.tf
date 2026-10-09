@@ -25,3 +25,4 @@ variable "service_account_id" {
   type        = string
   default     = "portfolio-agent-sa"
 }
+

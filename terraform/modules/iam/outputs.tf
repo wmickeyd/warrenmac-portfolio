@@ -12,3 +12,4 @@ output "gemini_secret_id" {
   description = "Secret Manager secret ID for the Gemini API key"
   value       = google_secret_manager_secret.gemini_api_key.secret_id
 }
+
