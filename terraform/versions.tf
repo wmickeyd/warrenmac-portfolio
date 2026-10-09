@@ -1,6 +1,11 @@
 terraform {
   required_version = ">= 1.5.0"
 
+  backend "gcs" {
+    bucket = "project-60b1ce90-88cb-4ae2-8b4-tfstate"
+    prefix = "portfolio/production"
+  }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -16,3 +21,4 @@ terraform {
     }
   }
 }
+
