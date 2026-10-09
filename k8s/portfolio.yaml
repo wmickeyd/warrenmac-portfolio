@@ -139,12 +139,22 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    # 1. Allow DNS resolution to CoreDNS
+    # 1. Allow DNS resolution to CoreDNS & NodeLocal DNSCache
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 169.254.20.10/32
       ports:
         - protocol: UDP
           port: 53
