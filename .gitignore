@@ -46,3 +46,8 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Local Initialization Scripts (Contains project IDs/credentials)
+initialize_project.sh
+terraform/initialize_project.sh
+*initialize*.sh
+
