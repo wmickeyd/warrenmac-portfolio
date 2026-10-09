@@ -14,6 +14,8 @@ kind: ServiceAccount
 metadata:
   name: portfolio-agent
   namespace: portfolio
+  annotations:
+    iam.gke.io/gcp-service-account: portfolio-agent-sa@project-60b1ce90-88cb-4ae2-8b4.iam.gserviceaccount.com
   labels:
     app.kubernetes.io/name: portfolio-agent
 ---
@@ -46,11 +48,17 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: warrenmac-portfolio:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/wmickeyd/warrenmac-portfolio:latest
+          imagePullPolicy: Always
           env:
             - name: GEMINI_MODEL
               value: "gemini-flash-lite-latest"
+            - name: STORAGE_BACKEND
+              value: "gcs"
+            - name: GCS_BUCKET_NAME
+              value: "warrenmac-resume-project-60b1ce90-88cb-4ae2-8b4-062c7b08"
+            - name: GCS_OBJECT_NAME
+              value: "resume.pdf"
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -70,22 +78,22 @@ spec:
                 - ALL
           resources:
             requests:
-              cpu: 50m
-              memory: 128Mi
+              cpu: 250m
+              memory: 512Mi
             limits:
-              cpu: 500m
-              memory: 256Mi
+              cpu: 250m
+              memory: 512Mi
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 3
+            initialDelaySeconds: 5
             periodSeconds: 10
           volumeMounts:
             - name: tmp-volume
@@ -106,7 +114,7 @@ spec:
   type: LoadBalancer
   ports:
     - name: http
-      port: 8090
+      port: 80
       targetPort: 8080
       protocol: TCP
   selector:
@@ -142,14 +150,21 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # 2. Allow HTTPS outbound strictly for external LLM API calls (Gemini)
+    # 2. Allow GKE Workload Identity Metadata Server access
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+    # 3. Allow HTTPS outbound strictly for external APIs (Gemini & GCS storage)
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
-              - 10.0.0.0/8       # Block VPC / private range
-              - 172.16.0.0/12    # Block internal Docker range
-              - 192.168.0.0/16   # Block internal K8s cluster range
+              - 10.0.0.0/8       # Block internal VPC range
+              - 172.16.0.0/12    # Block internal cluster master range
+              - 192.168.0.0/16   # Block internal pod range
       ports:
         - protocol: TCP
           port: 443
