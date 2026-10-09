@@ -58,9 +58,10 @@ jobs:
         with:
           scan-type: "fs"
           scan-ref: "."
+          scanners: "vuln,secret"
           severity: "CRITICAL,HIGH"
           format: "table"
-          exit-code: "0" # Audit log for PRs
+          exit-code: "1" # Hard blocking gate: fail build if any secret is detected
 
       - name: Trivy Kubernetes Configuration Audit (CIS & Restricted PSS)
         uses: aquasecurity/trivy-action@master
