@@ -16,6 +16,13 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
   --gate-overlay-bg: rgba(10, 13, 20, 0.96);
+  --user-msg-bg: #1e3a8a;
+  --user-msg-border: #3b82f6;
+  --user-msg-text: #ffffff;
+  --user-msg-meta: #93c5fd;
+  --blocked-msg-bg: rgba(239, 68, 68, 0.15);
+  --blocked-msg-border: #ef4444;
+  --blocked-msg-text: #fca5a5;
 }
 
 [data-theme="light"] {
@@ -34,6 +41,13 @@
   --accent-yellow: #d97706;
   --accent-purple: #7c3aed;
   --gate-overlay-bg: rgba(248, 250, 252, 0.96);
+  --user-msg-bg: #2563eb;
+  --user-msg-border: #1d4ed8;
+  --user-msg-text: #ffffff;
+  --user-msg-meta: #dbeafe;
+  --blocked-msg-bg: #fee2e2;
+  --blocked-msg-border: #f87171;
+  --blocked-msg-text: #991b1b;
 }
 
 * {
@@ -294,22 +308,32 @@ body {
 }
 
 .message-user {
-  background-color: #1e3a8a;
-  border: 1px solid #3b82f6;
+  background-color: var(--user-msg-bg);
+  border: 1px solid var(--user-msg-border);
+  color: var(--user-msg-text);
   align-self: flex-end;
+}
+
+.message-user .message-meta {
+  color: var(--user-msg-meta);
 }
 
 .message-bot {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
+  color: var(--text-primary);
   align-self: flex-start;
 }
 
 .message-blocked {
-  background-color: rgba(239, 68, 68, 0.15);
-  border: 1px solid var(--accent-red);
-  color: #fca5a5;
+  background-color: var(--blocked-msg-bg);
+  border: 1px solid var(--blocked-msg-border);
+  color: var(--blocked-msg-text);
   align-self: flex-start;
+}
+
+.message-blocked .message-meta {
+  color: var(--blocked-msg-text);
 }
 
 .message-meta {
