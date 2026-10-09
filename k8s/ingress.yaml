@@ -1,0 +1,80 @@
+# =============================================================================
+# Google-Managed SSL/TLS Certificate for warrenmac.com
+# =============================================================================
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: warrenmac-ssl-cert
+  namespace: portfolio
+spec:
+  domains:
+    - warrenmac.com
+    - www.warrenmac.com
+---
+# =============================================================================
+# FrontendConfig: Enforce Automatic HTTP to HTTPS Redirection
+# =============================================================================
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: portfolio-frontend-config
+  namespace: portfolio
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT
+---
+# =============================================================================
+# BackendConfig: Health Check Routing for Google Cloud Load Balancer
+# =============================================================================
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: portfolio-backend-config
+  namespace: portfolio
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: /health
+    port: 8080
+---
+# =============================================================================
+# GKE External HTTPS Ingress (Global Application Load Balancer)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: portfolio-ingress
+  namespace: portfolio
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "warrenmac-ip"
+    networking.gke.io/managed-certificates: "warrenmac-ssl-cert"
+    networking.gke.io/v1beta1.FrontendConfig: "portfolio-frontend-config"
+spec:
+  ingressClassName: "gce"
+  rules:
+    - host: warrenmac.com
+      http:
+        paths:
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: portfolio-agent
+                port:
+                  number: 80
+    - host: www.warrenmac.com
+      http:
+        paths:
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: portfolio-agent
+                port:
+                  number: 80
