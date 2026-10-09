@@ -71,6 +71,15 @@ jobs:
           format: "table"
           exit-code: "0"
 
+      - name: Trivy Terraform IaC Security Audit
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: "terraform/"
+          severity: "CRITICAL,HIGH"
+          format: "table"
+          exit-code: "0"
+
   # =========================================================================
   # 3. Hardened Container Build, Image CVE Scan & Cosign Attestation
   # =========================================================================
