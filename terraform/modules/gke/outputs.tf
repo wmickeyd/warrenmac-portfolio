@@ -23,3 +23,4 @@ output "get_credentials_command" {
   description = "gcloud command to authenticate kubectl with this cluster"
   value       = "gcloud container clusters get-credentials ${google_container_cluster.primary.name} --region ${var.region} --project ${var.project_id}"
 }
+

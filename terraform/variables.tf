@@ -44,3 +44,4 @@ variable "k8s_service_account" {
   type        = string
   default     = "portfolio-agent"
 }
+

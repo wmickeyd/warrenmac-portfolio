@@ -88,3 +88,4 @@ resource "google_compute_firewall" "allow_health_checks" {
     "130.211.0.0/22"
   ]
 }
+
