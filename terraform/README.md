@@ -160,5 +160,18 @@ terraform destroy
 
 ## Part 2: GitOps Infrastructure Automation via GitHub Actions
 
-See the main documentation below for details on how to set up automated, keyless CI/CD for Terraform using **Workload Identity Federation (WIF)** and dedicated Pull Request/Apply workflows.
+Infrastructure automation is managed via [`.github/workflows/terraform.yaml`](file:///Users/warren/Projects/warrenmac-portfolio/.github/workflows/terraform.yaml):
+
+1. **Authentication via Keyless OIDC (Workload Identity Federation)**:
+   * Uses `google-github-actions/auth@v2` with GCP Workload Identity Pool `github-pool` and Provider `github-provider`.
+   * Assumes `tf-runner-sa@project-60b1ce90-88cb-4ae2-8b4.iam.gserviceaccount.com` without hardcoded secrets.
+
+2. **Pull Request Workflow**:
+   * Scans configuration for misconfigurations with Trivy IaC scanner.
+   * Runs `terraform fmt -check`, `terraform init`, and `terraform validate`.
+   * Generates a speculative execution plan (`terraform plan -out=tfplan`) and automatically posts a collapsible summary comment directly onto the Pull Request.
+
+3. **Merge to `main` (Continuous Delivery)**:
+   * Automatically executes `terraform apply -auto-approve tfplan` against Google Cloud.
+   * State is locked and maintained remotely in `gs://project-60b1ce90-88cb-4ae2-8b4-tfstate/portfolio/production`.
 
