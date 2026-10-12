@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from guardrails import validate_input, telemetry
-from gemini_client import query_gemini
+from gemini_client import GEMINI_MODEL, query_gemini
 from resume_loader import sync_resume_now, get_current_resume, STORAGE_BACKEND
 from mlflow_client import init_mlflow, log_chat_trace, log_resume_sync_event
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -164,7 +164,7 @@ async def chat_endpoint(request: Request, payload: ChatRequest):
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+    model_name = GEMINI_MODEL
 
     # Ingress Guardrail Check
     is_valid, rejection_reason = validate_input(user_message, client_ip)

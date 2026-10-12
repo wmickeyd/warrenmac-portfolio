@@ -1,0 +1,187 @@
+/* ==========================================================
+   Tailwind entry point. Compiled to ../styles.css by the
+   Tailwind standalone CLI (see app/Dockerfile and README).
+   ========================================================== */
+@import "tailwindcss";
+
+@source "../index.html";
+@source "../app.js";
+
+/* Dark mode follows the data-theme attribute set by app.js */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-navy-900: #0b1530;
+  --color-navy-800: #0f1d45;
+  --color-navy-700: #16295e;
+  --color-brand-indigo: #4338ca;
+  --color-brand-cyan: #06b6d4;
+}
+
+/* Custom utilities (usable in markup and via @apply) */
+@utility gradient-bar {
+  background: linear-gradient(90deg, var(--color-brand-indigo), var(--color-brand-cyan));
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Offset anchor targets so the fixed nav doesn't cover section titles */
+  section[id] {
+    scroll-margin-top: 5rem;
+  }
+
+  body {
+    @apply bg-white font-sans text-slate-700 antialiased dark:bg-slate-950 dark:text-slate-300;
+  }
+
+  h1, h2, h3, h4 {
+    @apply text-slate-900 dark:text-white;
+  }
+}
+
+@layer components {
+  /* Hero / CTA gradient: navy -> indigo -> cyan */
+  .gradient-brand {
+    background: linear-gradient(120deg, var(--color-navy-900) 0%, var(--color-navy-700) 35%, var(--color-brand-indigo) 70%, var(--color-brand-cyan) 100%);
+  }
+
+  .text-gradient {
+    background: linear-gradient(90deg, #a5b4fc, #67e8f9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Section heading with the template's gradient underline bar */
+  .section-title {
+    @apply text-center text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white;
+  }
+
+  .section-title::after {
+    content: "";
+    @apply gradient-bar mx-auto mt-4 mb-2 block h-1 w-24 rounded-full;
+  }
+
+  .section-subtitle {
+    @apply mx-auto max-w-2xl text-center text-base text-slate-500 dark:text-slate-400;
+  }
+
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm transition dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .card-hover {
+    @apply hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10;
+  }
+
+  .btn-primary {
+    @apply btn gradient-bar text-white shadow-lg shadow-indigo-500/30 hover:scale-[1.03] hover:shadow-indigo-500/50;
+  }
+
+  .btn-light {
+    @apply btn bg-white text-navy-800 shadow-lg hover:scale-[1.03] hover:bg-slate-50;
+  }
+
+  .btn-ghost {
+    @apply btn border border-white/40 text-white hover:bg-white/10;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-xs font-medium;
+  }
+
+  /* Nav defaults (transparent over the hero); .nav-solid below overrides them */
+  .nav-brand {
+    @apply text-white;
+  }
+
+  .nav-link {
+    @apply rounded-full px-3 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10;
+  }
+
+  .nav-icon-btn {
+    @apply border border-white/30 text-white transition hover:bg-white/10;
+  }
+
+  .tag {
+    @apply rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-xs text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300;
+  }
+
+  .chip {
+    @apply cursor-pointer rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-400 dark:hover:text-indigo-300;
+  }
+
+  .chip-attack {
+    @apply border-red-200 bg-red-50 text-red-600 hover:border-red-400 hover:text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 dark:hover:border-red-400 dark:hover:text-red-200;
+  }
+
+  /* Chat bubbles (built by app.js) */
+  .message {
+    @apply max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed;
+  }
+
+  .message-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .message-meta {
+    @apply mb-1 font-mono text-[0.7rem] text-slate-400;
+  }
+
+  .message-user {
+    @apply gradient-bar self-end rounded-br-sm text-white;
+  }
+
+  .message-user .message-meta {
+    @apply text-indigo-100;
+  }
+
+  .message-bot {
+    @apply self-start rounded-bl-sm border border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
+  }
+
+  .message-blocked {
+    @apply self-start rounded-bl-sm border border-red-300 bg-red-50 text-red-800 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200;
+  }
+
+  .message-blocked .message-meta {
+    @apply text-red-500 dark:text-red-300;
+  }
+
+  /* Nav state toggled by app.js once the page scrolls past the hero top */
+  .nav-solid {
+    @apply bg-white/95 shadow-md backdrop-blur dark:bg-slate-950/95 dark:shadow-black/40;
+  }
+
+  .nav-solid .nav-brand,
+  .nav-solid .nav-link {
+    @apply text-slate-700 dark:text-slate-200;
+  }
+
+  .nav-solid .nav-link:hover {
+    @apply bg-slate-100 dark:bg-slate-800;
+  }
+
+  .nav-solid .nav-link.active {
+    @apply text-indigo-600 dark:text-cyan-300;
+  }
+
+  .nav-solid .nav-icon-btn {
+    @apply border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800;
+  }
+
+  .nav-link.active {
+    @apply text-cyan-300;
+  }
+}
