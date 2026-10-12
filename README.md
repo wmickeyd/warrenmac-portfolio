@@ -60,6 +60,20 @@ An enterprise-grade, cloud-native AI DevSecOps portfolio running on Kubernetes (
 
 ---
 
+## Frontend Development
+
+The site is a single static page (`app/frontend/index.html` + `app.js`) styled with **Tailwind CSS v4**. `app/frontend/styles.css` is a build artifact: the Docker image compiles it from `app/frontend/src/input.css` using the pinned, checksum-verified Tailwind standalone CLI (no Node.js required). It is git-ignored.
+
+For local development, install the CLI (`brew install tailwindcss` or download a [standalone binary](https://github.com/tailwindlabs/tailwindcss/releases)) and run it in watch mode alongside uvicorn:
+
+```bash
+tailwindcss -i app/frontend/src/input.css -o app/frontend/styles.css --watch
+```
+
+Photos (headshot, project screenshots, hero background, logos) live in `app/frontend/images/`. See [`app/frontend/images/README.md`](app/frontend/images/README.md) for the expected filenames and sizes. Missing images fall back to placeholders automatically.
+
+---
+
 ## Production Deployment (GCP GKE + Cloud Storage)
 
 ### 1. GCS Bucket Setup
