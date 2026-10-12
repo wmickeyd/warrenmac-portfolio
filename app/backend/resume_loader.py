@@ -18,6 +18,7 @@ import pypdf
 
 from resume_data import WARREN_RESUME as FALLBACK_RESUME
 from guardrails import telemetry
+from mlflow_client import log_resume_sync_event
 
 logger = logging.getLogger("resume_loader")
 logging.basicConfig(level=logging.INFO)
@@ -163,6 +164,12 @@ def sync_resume_now() -> Tuple[bool, str]:
     _last_file_hash = new_hash
 
     telemetry.record_event("RESUME_HOT_RELOADED", f"Successfully reloaded resume (SHA256: {new_hash[:8]}...)")
+    log_resume_sync_event(
+        file_hash=new_hash,
+        char_count=len(formatted_resume),
+        status_message="Resume hot-reloaded into memory",
+        storage_backend=STORAGE_BACKEND
+    )
     logger.info(f"Resume successfully hot-reloaded! (Hash: {new_hash[:12]}...)")
     return True, "Resume successfully parsed and hot-reloaded into memory."
 

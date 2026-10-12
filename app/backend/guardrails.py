@@ -61,6 +61,12 @@ class SecurityTelemetry:
         if len(self.recent_events) > 50:
             self.recent_events.pop()
 
+        try:
+            from metrics import SECURITY_EVENTS_TOTAL
+            SECURITY_EVENTS_TOTAL.labels(event_type=event_type).inc()
+        except Exception:
+            pass
+
     def get_stats(self) -> Dict[str, Any]:
         return {
             "total_requests": self.total_requests,
