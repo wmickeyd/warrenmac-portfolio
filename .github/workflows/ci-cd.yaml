@@ -53,15 +53,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Trivy Secret & Dependency Vulnerability Scan
+      - name: Trivy Secret Detection Scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: "fs"
           scan-ref: "."
-          scanners: "vuln,secret"
+          scanners: "secret"
+          format: "table"
+          exit-code: "1" # Hard blocking gate: fail build immediately if any secret is leaked
+
+      - name: Trivy Dependency Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln"
           severity: "CRITICAL,HIGH"
           format: "table"
-          exit-code: "1" # Hard blocking gate: fail build if any secret is detected
+          exit-code: "1" # Hard blocking gate: fail build if CRITICAL or HIGH CVEs exist
 
       - name: Trivy Kubernetes Configuration Audit (CIS & Restricted PSS)
         uses: aquasecurity/trivy-action@master
