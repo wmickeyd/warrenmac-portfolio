@@ -1,0 +1,209 @@
+# =============================================================================
+# Local OrbStack Kubernetes Deployment for WarrenMac Portfolio & MLflow
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: portfolio
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portfolio-agent
+  namespace: portfolio
+  labels:
+    app.kubernetes.io/name: portfolio-agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-agent
+  namespace: portfolio
+  labels:
+    app.kubernetes.io/name: portfolio-agent
+    app.kubernetes.io/part-of: warrenmac-portfolio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: portfolio-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: portfolio-agent
+    spec:
+      serviceAccountName: portfolio-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: warrenmac-portfolio:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GEMINI_MODEL
+              value: "gemini-flash-lite-latest"
+            - name: STORAGE_BACKEND
+              value: "local"
+            - name: LOCAL_RESUME_PATH
+              value: "/app/frontend/warren-mcdonald-resume.pdf"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow.mlflow.svc.cluster.local:5001"
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: "portfolio-agent"
+            - name: MLFLOW_TRACKING_DIR
+              value: "/tmp/mlflow"
+            - name: MLFLOW_HOME
+              value: "/tmp/mlflow"
+            - name: GIT_PYTHON_REFRESH
+              value: "quiet"
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: apiKey
+                  optional: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portfolio-agent
+  namespace: portfolio
+  labels:
+    app.kubernetes.io/name: portfolio-agent
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: portfolio-agent
+---
+# Network Isolation Policy with OrbStack MLflow Inter-Namespace Egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isolate-portfolio-agent
+  namespace: portfolio
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: portfolio-agent
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow incoming HTTP traffic on port 8080
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # 1. DNS resolution (kube-dns)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 2. Local DNS cache fallback
+    - to:
+        - ipBlock:
+            cidr: 169.254.20.10/32
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 3. Allow HTTPS outbound for Gemini API
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # 4. Allow in-cluster egress to MLflow service in mlflow namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mlflow
+      ports:
+        - protocol: TCP
+          port: 5001
+        - protocol: TCP
+          port: 5000
+---
+# Prometheus Operator ServiceMonitor for Scraping Portfolio Agent Telemetry
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: portfolio-agent
+  namespace: portfolio
+  labels:
+    app.kubernetes.io/name: portfolio-agent
+    release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: portfolio-agent
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

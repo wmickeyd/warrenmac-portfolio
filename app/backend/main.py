@@ -4,9 +4,10 @@ FastAPI Service with Security Telemetry & AI Guardrail Pipeline
 """
 
 import os
+import time
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -14,13 +15,24 @@ from pydantic import BaseModel, Field
 from guardrails import validate_input, telemetry
 from gemini_client import query_gemini
 from resume_loader import sync_resume_now, get_current_resume, STORAGE_BACKEND
+from mlflow_client import init_mlflow, log_chat_trace, log_resume_sync_event
+from prometheus_fastapi_instrumentator import Instrumentator
+from metrics import (
+    LLM_INFERENCE_DURATION_SECONDS,
+    LLM_QUERIES_TOTAL,
+    RESUME_CHARACTERS,
+    RESUME_SYNC_TOTAL,
+)
 
 async def periodic_resume_watcher():
     """Background task checking storage for resume updates every 30 seconds."""
     while True:
         try:
             await asyncio.sleep(30)
-            sync_resume_now()
+            updated, _ = sync_resume_now()
+            RESUME_CHARACTERS.set(len(get_current_resume()))
+            if updated:
+                RESUME_SYNC_TOTAL.labels(status="updated").inc()
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -28,9 +40,13 @@ async def periodic_resume_watcher():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize MLflow tracking if configured
+    init_mlflow()
     # Initial sync on pod startup
     print("Executing initial resume sync from storage...")
-    sync_resume_now()
+    updated, _ = sync_resume_now()
+    RESUME_CHARACTERS.set(len(get_current_resume()))
+    RESUME_SYNC_TOTAL.labels(status="updated" if updated else "initial").inc()
     # Launch background watcher
     watcher_task = asyncio.create_task(periodic_resume_watcher())
     yield
@@ -53,6 +69,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def protect_metrics_endpoint(request: Request, call_next):
+    """Restricts /metrics to internal cluster traffic when running in production."""
+    if request.url.path == "/metrics":
+        if os.getenv("STORAGE_BACKEND") == "gcs" or os.getenv("ENVIRONMENT") == "production":
+            if request.headers.get("x-forwarded-for"):
+                return Response(status_code=403, content="Forbidden: Internal metrics endpoint only")
+    return await call_next(request)
+
+# Prometheus Metrics Instrumentation
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/metrics"],
+)
+instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
 @app.post("/api/internal/sync-resume")
 async def trigger_resume_sync():
     """
@@ -60,6 +93,8 @@ async def trigger_resume_sync():
     Enables zero-downtime hot reloading without waiting for the polling interval.
     """
     updated, message = sync_resume_now()
+    RESUME_CHARACTERS.set(len(get_current_resume()))
+    RESUME_SYNC_TOTAL.labels(status="updated" if updated else "unchanged").inc()
     return {
         "updated": updated,
         "message": message,
@@ -116,6 +151,8 @@ async def get_security_stats():
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(request: Request, payload: ChatRequest):
+    start_time = time.perf_counter()
+
     # Extract client IP (handling reverse proxies / load balancers)
     client_ip = (
         request.headers.get("x-forwarded-for", "").split(",")[0].strip()
@@ -127,9 +164,21 @@ async def chat_endpoint(request: Request, payload: ChatRequest):
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
+    model_name = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+
     # Ingress Guardrail Check
     is_valid, rejection_reason = validate_input(user_message, client_ip)
     if not is_valid:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        LLM_QUERIES_TOTAL.labels(status="blocked", model=model_name).inc()
+        log_chat_trace(
+            user_prompt=user_message,
+            ai_response=rejection_reason,
+            status="blocked",
+            client_ip=client_ip,
+            latency_ms=latency_ms,
+            guardrail_reason=rejection_reason
+        )
         return ChatResponse(
             response=rejection_reason,
             status="blocked",
@@ -137,7 +186,27 @@ async def chat_endpoint(request: Request, payload: ChatRequest):
         )
 
     # Process via Hardened Gemini Client
-    ai_response = await query_gemini(user_message)
+    llm_start = time.perf_counter()
+    try:
+        ai_response = await query_gemini(user_message)
+        llm_duration = time.perf_counter() - llm_start
+        LLM_INFERENCE_DURATION_SECONDS.observe(llm_duration)
+        LLM_QUERIES_TOTAL.labels(status="ok", model=model_name).inc()
+    except Exception as e:
+        llm_duration = time.perf_counter() - llm_start
+        LLM_INFERENCE_DURATION_SECONDS.observe(llm_duration)
+        LLM_QUERIES_TOTAL.labels(status="error", model=model_name).inc()
+        raise e
+
+    latency_ms = (time.perf_counter() - start_time) * 1000
+    log_chat_trace(
+        user_prompt=user_message,
+        ai_response=ai_response,
+        status="ok",
+        client_ip=client_ip,
+        latency_ms=latency_ms,
+        guardrail_reason=""
+    )
     return ChatResponse(
         response=ai_response,
         status="ok",
