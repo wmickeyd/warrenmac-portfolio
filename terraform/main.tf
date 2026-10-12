@@ -22,12 +22,12 @@ locals {
 # =============================================================================
 resource "google_project_service" "required_services" {
   for_each = toset([
-    "container.googleapis.com",      # Google Kubernetes Engine
-    "compute.googleapis.com",        # Compute Engine & Networking
-    "storage.googleapis.com",        # Cloud Storage
-    "iam.googleapis.com",            # Identity and Access Management
-    "secretmanager.googleapis.com",  # Google Secret Manager
-    "aiplatform.googleapis.com",     # Vertex AI / Gemini API
+    "container.googleapis.com",     # Google Kubernetes Engine
+    "compute.googleapis.com",       # Compute Engine & Networking
+    "storage.googleapis.com",       # Cloud Storage
+    "iam.googleapis.com",           # Identity and Access Management
+    "secretmanager.googleapis.com", # Google Secret Manager
+    "aiplatform.googleapis.com",    # Vertex AI / Gemini API
   ])
 
   project            = var.project_id
