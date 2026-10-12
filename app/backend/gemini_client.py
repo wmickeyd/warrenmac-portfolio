@@ -9,8 +9,17 @@ from typing import Optional
 from guardrails import CANARY_TOKEN, sanitize_output
 from resume_loader import get_current_resume
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+def _clean_env(name: str, default: str = "") -> str:
+    """Read an env var, dropping whitespace and wrapping quotes.
+
+    `docker run --env-file` passes quotes through literally (KEY="abc" -> '"abc"'),
+    which would otherwise surface as a misleading "API key not valid" error.
+    """
+    return os.getenv(name, default).strip().strip("\"'")
+
+
+GEMINI_API_KEY = _clean_env("GEMINI_API_KEY")
+GEMINI_MODEL = _clean_env("GEMINI_MODEL", "gemini-flash-lite-latest")
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 def _build_system_instructions() -> str:
