@@ -20,7 +20,10 @@ FROM python:3.11-slim AS runtime
 # Security hardening environment flags
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/home/appuser/.local/bin:$PATH"
+    PATH="/home/appuser/.local/bin:$PATH" \
+    MLFLOW_TRACKING_DIR=/tmp/mlflow \
+    MLFLOW_HOME=/tmp/mlflow \
+    GIT_PYTHON_REFRESH=quiet
 
 # Create non-root user and group with explicit UID/GID
 RUN groupadd -g 10001 appgroup && \
