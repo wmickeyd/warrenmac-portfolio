@@ -107,7 +107,19 @@ env:
     value: "resume.pdf"
 ```
 
-### 4. Updating Your Resume in Production
+### 4. Continuous Deployment via GitHub Actions (Zero-Secret WIF)
+Code changes merged to `main` trigger the automated CI/CD pipeline in `.github/workflows/ci-cd.yaml`:
+1. **Adversarial & Functional Tests**: Runs Pytest across LLM guardrails, API routes, and loaders.
+2. **Security & IaC Audits**: Trivy secret detection (blocking gate) and dependency vulnerability scan.
+3. **Container Build, Scan & Attestation**: Multi-stage build pushed to GHCR, scanned by Trivy, and signed keylessly with **Sigstore Cosign**.
+4. **Automated GKE Continuous Deployment**: GitHub Actions authenticates keylessly via **Google Cloud Workload Identity Federation**, applies manifests, updates the deployment to the signed commit SHA (`ghcr.io/wmickeyd/warrenmac-portfolio:sha-<SHA>`), and verifies zero-downtime rollout with `kubectl rollout status`.
+
+### 5. Infrastructure as Code Automation (Terraform GitOps)
+Changes to infrastructure in `terraform/` trigger `.github/workflows/terraform.yaml`:
+* **Pull Requests**: Trivy IaC audit, `terraform fmt -check`, `terraform init`, and `terraform plan`, automatically posting the formatted plan summary as a comment on the PR.
+* **Push to `main`**: Runs `terraform apply -auto-approve` using keyless Workload Identity Federation.
+
+### 6. Updating Your Resume in Production (Hot-Reload)
 Whenever you get a new job or earn a new certification:
 ```bash
 # 1. Upload new PDF to your GCS bucket
