@@ -19,7 +19,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # Never cancel a main deploy mid-rollout
 
 permissions:
   contents: read
@@ -145,6 +145,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           load: ${{ github.event_name == 'pull_request' }} # Load locally for PR image scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Trivy Container Image Vulnerability Scan
         uses: aquasecurity/trivy-action@master
