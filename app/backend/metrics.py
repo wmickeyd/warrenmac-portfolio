@@ -36,3 +36,10 @@ RESUME_SYNC_TOTAL = Counter(
     ["status"]
 )
 
+
+# Contact Form Telemetry
+CONTACT_SUBMISSIONS_TOTAL = Counter(
+    "portfolio_contact_submissions_total",
+    "Total contact form submissions by outcome",
+    ["status"]
+)

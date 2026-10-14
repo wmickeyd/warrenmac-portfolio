@@ -13,11 +13,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from guardrails import validate_input, telemetry
+import contact
 from gemini_client import GEMINI_MODEL, query_gemini
 from resume_loader import sync_resume_now, get_current_resume, STORAGE_BACKEND
 from mlflow_client import init_mlflow, log_chat_trace, log_resume_sync_event
 from prometheus_fastapi_instrumentator import Instrumentator
 from metrics import (
+    CONTACT_SUBMISSIONS_TOTAL,
     LLM_INFERENCE_DURATION_SECONDS,
     LLM_QUERIES_TOTAL,
     RESUME_CHARACTERS,
@@ -212,6 +214,49 @@ async def chat_endpoint(request: Request, payload: ChatRequest):
         status="ok",
         reason=""
     )
+
+class ContactRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: str = Field(..., max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    company: str = Field("", max_length=120)
+    message: str = Field(..., min_length=10, max_length=5000)
+    website: str = Field("", max_length=200)  # Honeypot: hidden from humans, bots fill it in
+
+@app.post("/api/contact")
+async def contact_endpoint(request: Request, payload: ContactRequest):
+    client_ip = (
+        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or request.client.host
+        or "127.0.0.1"
+    )
+
+    # Silently accept bot submissions so they don't learn to skip the honeypot
+    if payload.website:
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="spam").inc()
+        telemetry.record_event("CONTACT_SPAM", f"Honeypot triggered from IP {client_ip}")
+        return {"success": True}
+
+    if not contact.contact_rate_limiter.is_allowed(client_ip):
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="rate_limited").inc()
+        telemetry.record_event("RATE_LIMIT", f"IP {client_ip} exceeded contact form limit")
+        raise HTTPException(status_code=429, detail="Too many messages. Please try again later or reach out on LinkedIn.")
+
+    if not contact.is_configured():
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="unconfigured").inc()
+        raise HTTPException(status_code=503, detail="Contact form is temporarily unavailable. Please reach out on LinkedIn.")
+
+    sent = await contact.send_contact_email(
+        name=payload.name.strip(),
+        email=payload.email.strip(),
+        company=payload.company.strip(),
+        message=payload.message.strip(),
+    )
+    if not sent:
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="error").inc()
+        raise HTTPException(status_code=502, detail="Your message couldn't be delivered. Please try again or reach out on LinkedIn.")
+
+    CONTACT_SUBMISSIONS_TOTAL.labels(status="sent").inc()
+    return {"success": True}
 
 # Mount frontend static assets if available
 frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")

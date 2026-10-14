@@ -65,6 +65,21 @@ spec:
                   name: gemini-api-key
                   key: apiKey
                   optional: true
+            # Contact form delivery via Resend (form returns 503 until the secret exists)
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: resend-api-key
+                  key: apiKey
+                  optional: true
+            - name: CONTACT_TO_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: resend-api-key
+                  key: toEmail
+                  optional: true
+            - name: CONTACT_FROM_EMAIL
+              value: "Portfolio Contact <contact@warrenmac.com>"
           ports:
             - name: http
               containerPort: 8080
