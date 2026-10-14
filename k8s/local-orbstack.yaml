@@ -50,6 +50,9 @@ spec:
           image: warrenmac-portfolio:latest
           imagePullPolicy: IfNotPresent
           env:
+            # No load balancer locally, so X-Forwarded-For is never trusted
+            - name: XFF_TRUSTED_HOPS
+              value: "0"
             - name: GEMINI_MODEL
               value: "gemini-flash-lite-latest"
             - name: STORAGE_BACKEND

@@ -89,12 +89,16 @@ class RateLimiter:
     def is_allowed(self, client_ip: str) -> bool:
         now = time.time()
         # Clean older requests outside window
-        self.requests[client_ip] = [
-            t for t in self.requests[client_ip] if now - t < self.window_seconds
-        ]
-        if len(self.requests[client_ip]) >= self.max_requests:
+        recent = [t for t in self.requests.get(client_ip, []) if now - t < self.window_seconds]
+        if len(recent) >= self.max_requests:
+            self.requests[client_ip] = recent
             return False
-        self.requests[client_ip].append(now)
+        recent.append(now)
+        self.requests[client_ip] = recent
+        # Evict idle IPs so a flood of distinct addresses can't grow memory without bound
+        if len(self.requests) > 10_000:
+            for ip in [ip for ip, ts in self.requests.items() if not ts or now - ts[-1] >= self.window_seconds]:
+                del self.requests[ip]
         return True
 
 rate_limiter = RateLimiter(max_requests=12, window_seconds=60)
