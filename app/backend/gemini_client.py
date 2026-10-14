@@ -38,7 +38,7 @@ SECURITY DIRECTIVES (MANDATORY):
 5. Keep your tone confident, articulate, and technical.
 """
 
-async def query_gemini(user_prompt: str) -> str:
+async def query_gemini(user_prompt: str, client_ip: Optional[str] = None) -> str:
     """Sends sanitized prompt to Gemini API with timeout and error handling."""
     if not GEMINI_API_KEY:
         return (
@@ -84,7 +84,7 @@ async def query_gemini(user_prompt: str) -> str:
         raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
 
         # Pass through Egress Guardrail (Canary check + PII scrub)
-        is_safe, sanitized_text = sanitize_output(raw_text)
+        is_safe, sanitized_text = sanitize_output(raw_text, client_ip)
         if not is_safe:
             return sanitized_text
         return sanitized_text

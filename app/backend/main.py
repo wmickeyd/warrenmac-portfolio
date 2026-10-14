@@ -100,7 +100,7 @@ async def trigger_resume_sync(request: Request):
     auth_header = request.headers.get("authorization", "")
     scheme, _, provided_token = auth_header.partition(" ")
     if scheme.lower() != "bearer" or not secrets_match(provided_token.strip(), expected_token):
-        telemetry.record_event("UNAUTHORIZED_SYNC", f"Rejected resume sync from IP {get_client_ip(request)}")
+        telemetry.record_event("UNAUTHORIZED_SYNC", "Rejected unauthenticated resume sync", get_client_ip(request))
         raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Bearer"})
 
     updated, message = sync_resume_now()
@@ -146,7 +146,7 @@ async def verify_password(request: Request, payload: AuthVerifyRequest):
         return {"success": True, "message": "Gate disabled"}
     client_ip = get_client_ip(request)
     if not auth_rate_limiter.is_allowed(client_ip):
-        telemetry.record_event("RATE_LIMIT", f"IP {client_ip} exceeded passcode attempt limit")
+        telemetry.record_event("RATE_LIMIT", "Passcode attempt limit exceeded", client_ip)
         raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
     if secrets_match(payload.password, SITE_ACCESS_PASSWORD):
         return {"success": True, "message": "Access granted"}
@@ -205,7 +205,7 @@ async def chat_endpoint(request: Request, payload: ChatRequest):
     # Process via Hardened Gemini Client
     llm_start = time.perf_counter()
     try:
-        ai_response = await query_gemini(user_message)
+        ai_response = await query_gemini(user_message, client_ip)
         llm_duration = time.perf_counter() - llm_start
         LLM_INFERENCE_DURATION_SECONDS.observe(llm_duration)
         LLM_QUERIES_TOTAL.labels(status="ok", model=model_name).inc()
@@ -244,12 +244,12 @@ async def contact_endpoint(request: Request, payload: ContactRequest):
     # Silently accept bot submissions so they don't learn to skip the honeypot
     if payload.website:
         CONTACT_SUBMISSIONS_TOTAL.labels(status="spam").inc()
-        telemetry.record_event("CONTACT_SPAM", f"Honeypot triggered from IP {client_ip}")
+        telemetry.record_event("CONTACT_SPAM", "Contact form honeypot triggered", client_ip)
         return {"success": True}
 
     if not contact.contact_rate_limiter.is_allowed(client_ip):
         CONTACT_SUBMISSIONS_TOTAL.labels(status="rate_limited").inc()
-        telemetry.record_event("RATE_LIMIT", f"IP {client_ip} exceeded contact form limit")
+        telemetry.record_event("RATE_LIMIT", "Contact form rate limit exceeded", client_ip)
         raise HTTPException(status_code=429, detail="Too many messages. Please try again later or reach out on LinkedIn.")
 
     if not contact.is_configured():

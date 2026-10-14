@@ -7,10 +7,11 @@ Implements defense-in-depth for LLM applications:
 4. Client IP rate limiting & Denial of Wallet protection (OWASP LLM04)
 """
 
+import ipaddress
 import re
 import time
 import secrets
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Optional
 from collections import defaultdict
 
 # Cryptographic canary token generated per backend lifecycle
@@ -41,6 +42,19 @@ SENSITIVE_PATTERNS = [
     r"cluster\.local",                           # Kubernetes internal domain
 ]
 
+def mask_ip(client_ip: str) -> str:
+    """
+    Truncates an IP for the public dashboard (IPv4 /24, IPv6 /48): enough to tell visitors
+    apart and spot load-balancer addresses, without publishing anyone's exact address.
+    """
+    try:
+        ip = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return "unknown"
+    if ip.version == 4:
+        return ".".join(str(ip).split(".")[:3]) + ".x"
+    return f"{ipaddress.ip_network(f'{ip}/48', strict=False).network_address}/48"
+
 class SecurityTelemetry:
     """Tracks live security events for the public DevSecOps dashboard."""
     def __init__(self):
@@ -51,7 +65,9 @@ class SecurityTelemetry:
         self.successful_queries = 0
         self.recent_events: List[Dict[str, Any]] = []
 
-    def record_event(self, event_type: str, details: str):
+    def record_event(self, event_type: str, details: str, client_ip: Optional[str] = None):
+        if client_ip:
+            details = f"{details} (IP {mask_ip(client_ip)})"
         event = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "type": event_type,
@@ -113,13 +129,13 @@ def validate_input(user_prompt: str, client_ip: str) -> Tuple[bool, str]:
     # 1. Rate Limiting Check
     if not rate_limiter.is_allowed(client_ip):
         telemetry.rate_limits_triggered += 1
-        telemetry.record_event("RATE_LIMIT", f"IP {client_ip} exceeded window limit")
+        telemetry.record_event("RATE_LIMIT", "Chat request rate limit exceeded", client_ip)
         return False, "Rate limit exceeded. Please wait a minute before asking another question."
 
     # 2. Payload Length Check (Prevent context-stuffing DoS)
     if len(user_prompt) > 800:
         telemetry.blocked_injections += 1
-        telemetry.record_event("PAYLOAD_TOO_LARGE", f"Prompt length {len(user_prompt)} exceeded limit")
+        telemetry.record_event("PAYLOAD_TOO_LARGE", f"Prompt length {len(user_prompt)} exceeded limit", client_ip)
         return False, "Prompt is too long. Please keep your question under 800 characters."
 
     # 3. Prompt Injection / Jailbreak Detection
@@ -128,13 +144,14 @@ def validate_input(user_prompt: str, client_ip: str) -> Tuple[bool, str]:
             telemetry.blocked_injections += 1
             telemetry.record_event(
                 "PROMPT_INJECTION_BLOCKED",
-                f"Matched pattern: {pattern}"
+                f"Matched pattern: {pattern}",
+                client_ip,
             )
             return False, "Security Notice: Your query triggered the AI DevSecOps prompt injection guardrail. Please ask a direct question about Warren's resume or experience."
 
     return True, ""
 
-def sanitize_output(raw_response: str) -> Tuple[bool, str]:
+def sanitize_output(raw_response: str, client_ip: Optional[str] = None) -> Tuple[bool, str]:
     """
     Egress inspection: checks for canary token leaks and scrubs secrets/internal IPs.
     Returns (is_safe, sanitized_content).
@@ -142,7 +159,7 @@ def sanitize_output(raw_response: str) -> Tuple[bool, str]:
     # 1. Canary Token Check (Detects system prompt exfiltration)
     if CANARY_TOKEN in raw_response:
         telemetry.canary_leaks_prevented += 1
-        telemetry.record_event("CANARY_TOKEN_LEAK_PREVENTED", "Model attempted to leak system instructions")
+        telemetry.record_event("CANARY_TOKEN_LEAK_PREVENTED", "Model attempted to leak system instructions", client_ip)
         return False, "Security Notice: Output blocked by egress guardrail (system prompt exfiltration attempt intercepted)."
 
     # 2. Secret & Internal Network PII Scrubbing
