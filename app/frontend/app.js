@@ -234,6 +234,50 @@ document.querySelectorAll('[data-prompt]').forEach(btn => {
 });
 
 // ==========================================
+// Contact Form
+// ==========================================
+const contactForm = document.getElementById('contact-form');
+const contactStatus = document.getElementById('contact-status');
+const contactSubmit = document.getElementById('contact-submit');
+
+function setContactStatus(text, isError) {
+  contactStatus.textContent = text;
+  contactStatus.className = `text-sm ${isError ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`;
+}
+
+contactForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const payload = Object.fromEntries(new FormData(contactForm));
+
+  contactSubmit.disabled = true;
+  contactSubmit.innerText = 'Sending…';
+  setContactStatus('', false);
+
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      contactForm.reset();
+      setContactStatus("Thanks! Your message is on its way. I'll be in touch soon.", false);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      // 422 validation errors come back as a list; only surface plain-string details
+      const detail = typeof data.detail === 'string' ? data.detail : 'Please check your details and try again.';
+      setContactStatus(detail, true);
+    }
+  } catch (err) {
+    setContactStatus('Network error: your message could not be sent. Please try again.', true);
+  } finally {
+    contactSubmit.disabled = false;
+    contactSubmit.innerText = 'Send message';
+  }
+});
+
+// ==========================================
 // Telemetry Polling
 // ==========================================
 function renderEvent(ev) {

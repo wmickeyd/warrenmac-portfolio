@@ -35,7 +35,6 @@ env:
   GKE_REGION: "us-central1"
   K8S_NAMESPACE: "portfolio"
   K8S_DEPLOYMENT: "portfolio-agent"
-  K8S_CONTAINER: "agent"
   WIF_PROVIDER: "projects/326942544071/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
   WIF_SERVICE_ACCOUNT: "tf-runner-sa@project-60b1ce90-88cb-4ae2-8b4.iam.gserviceaccount.com"
 
@@ -48,10 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -74,10 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Trivy Secret Detection Scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -86,7 +85,7 @@ jobs:
           exit-code: "1" # Hard blocking gate: fail build immediately if any secret is leaked
 
       - name: Trivy Dependency Vulnerability Scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -96,13 +95,13 @@ jobs:
           exit-code: "1" # Hard blocking gate: fail build if CRITICAL or HIGH CVEs exist
 
       - name: Trivy Kubernetes Configuration Audit (CIS & Restricted PSS)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "config"
           scan-ref: "k8s/"
           severity: "CRITICAL,HIGH"
           format: "table"
-          exit-code: "0"
+          exit-code: "1" # Hard blocking gate: misconfigured manifests never reach the cluster
 
   # =========================================================================
   # 3. Hardened Container Build, Image CVE Scan & Cosign Attestation
@@ -111,16 +110,18 @@ jobs:
     name: "Build, Scan Image & Sign (Cosign)"
     needs: [adversarial-tests, security-audit]
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build-push.outputs.digest }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to GitHub Container Registry (GHCR)
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -128,7 +129,7 @@ jobs:
 
       - name: Extract Docker Metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -138,7 +139,7 @@ jobs:
 
       - name: Build and Push Docker Image
         id: build-push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: app
           push: ${{ github.event_name != 'pull_request' }}
@@ -149,21 +150,22 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy Container Image Vulnerability Scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           scan-type: "image"
-          severity: "CRITICAL"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true # Only gate on CVEs that a rebuild/upgrade can actually fix
           format: "table"
-          exit-code: "0" # Generates vulnerability report in CI
+          exit-code: "1" # Hard blocking gate: vulnerable images are never signed or deployed
 
       # Cryptographic Container Signing with Sigstore Cosign
       - name: Install Cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v3.5.0
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
 
       - name: Sign Container Image (Keyless OIDC)
         if: github.event_name != 'pull_request'
@@ -187,33 +189,45 @@ jobs:
       id-token: write      # Required for Workload Identity Federation OIDC token
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         id: gcp-auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up GKE Credentials
-        uses: google-github-actions/get-gke-credentials@v2
+        uses: google-github-actions/get-gke-credentials@64bc7249bbcf78056bb92f14d3cedc2da193946c # v2.3.5
         with:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.GKE_REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Apply Kubernetes Configurations & Roll Out Image
-        run: |
-          echo "Applying Kubernetes manifests in namespace ${{ env.K8S_NAMESPACE }}..."
-          kubectl apply -f k8s/portfolio.yaml
-          kubectl apply -f k8s/ingress.yaml
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
 
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          echo "Updating deployment ${{ env.K8S_DEPLOYMENT }} container '${{ env.K8S_CONTAINER }}' to ${IMAGE_TAG}..."
-          kubectl set image deployment/${{ env.K8S_DEPLOYMENT }} \
-            ${{ env.K8S_CONTAINER }}=${IMAGE_TAG} \
-            --namespace ${{ env.K8S_NAMESPACE }}
+      # Refuse to deploy anything this repo's main-branch pipeline didn't sign
+      - name: Verify Image Signature
+        env:
+          DIGEST: ${{ needs.build-scan-sign.outputs.digest }}
+        run: |
+          cosign verify "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/ci-cd.yaml@refs/heads/main"
+
+      - name: Apply Kubernetes Configurations & Roll Out Image
+        env:
+          DIGEST: ${{ needs.build-scan-sign.outputs.digest }}
+        run: |
+          # Deploy by immutable digest in a single apply (no :latest, no second set-image rollout)
+          sed "s|@sha256:IMAGE_DIGEST_SET_BY_CI|@${DIGEST}|" k8s/portfolio.yaml > /tmp/portfolio.rendered.yaml
+          grep -q "@${DIGEST}" /tmp/portfolio.rendered.yaml || { echo "Image digest placeholder not found"; exit 1; }
+
+          echo "Applying Kubernetes manifests in namespace ${{ env.K8S_NAMESPACE }} with image digest ${DIGEST}..."
+          kubectl apply -f /tmp/portfolio.rendered.yaml
+          kubectl apply -f k8s/ingress.yaml
 
           echo "Awaiting zero-downtime rollout completion..."
           kubectl rollout status deployment/${{ env.K8S_DEPLOYMENT }} \

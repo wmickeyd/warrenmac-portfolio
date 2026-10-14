@@ -1,7 +1,8 @@
+# Base images are pinned by multi-arch digest; Dependabot (.github/dependabot.yml) proposes updates.
 # ========================================================
 # Stage 1: Build stage (compile dependencies)
 # ========================================================
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS builder
 
 WORKDIR /build
 
@@ -15,7 +16,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ========================================================
 # Stage 2: Compile Tailwind CSS (standalone CLI, no Node)
 # ========================================================
-FROM debian:bookworm-slim AS css-builder
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS css-builder
 
 ARG TARGETARCH
 ARG TAILWIND_VERSION=v4.3.3
@@ -45,7 +46,7 @@ RUN tailwindcss -i frontend/src/input.css -o frontend/styles.css --minify && \
 # ========================================================
 # Stage 3: Hardened Runtime stage
 # ========================================================
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS runtime
 
 # Security hardening environment flags
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -59,7 +60,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN groupadd -g 10001 appgroup && \
     useradd -u 10001 -g appgroup -s /sbin/nologin -d /home/appuser appuser && \
     mkdir -p /home/appuser /app && \
-    chown -R appuser:appgroup /home/appuser /app
+    chown -R appuser:appgroup /home/appuser /app && \
+    # Build-only tooling isn't needed at runtime and ships its own vendored CVEs
+    pip uninstall -y --no-cache-dir setuptools wheel
 
 WORKDIR /app
 

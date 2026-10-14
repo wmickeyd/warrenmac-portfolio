@@ -48,9 +48,16 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: ghcr.io/wmickeyd/warrenmac-portfolio:latest
-          imagePullPolicy: Always
+          # CI deploys by immutable digest (the exact artifact cosign signed); this placeholder
+          # is rewritten in the deploy job and deliberately fails to pull if applied by hand.
+          image: ghcr.io/wmickeyd/warrenmac-portfolio@sha256:IMAGE_DIGEST_SET_BY_CI
+          imagePullPolicy: IfNotPresent
           env:
+            - name: ENVIRONMENT
+              value: "production"
+            # GCLB appends "<client-ip>, <lb-ip>" to X-Forwarded-For; trust only those 2 hops
+            - name: XFF_TRUSTED_HOPS
+              value: "2"
             - name: GEMINI_MODEL
               value: "gemini-flash-lite-latest"
             - name: STORAGE_BACKEND
@@ -64,6 +71,35 @@ spec:
                 secretKeyRef:
                   name: gemini-api-key
                   key: apiKey
+                  optional: true
+            # Contact form delivery via Resend (form returns 503 until the secret exists)
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: resend-api-key
+                  key: apiKey
+                  optional: true
+            - name: CONTACT_TO_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: resend-api-key
+                  key: toEmail
+                  optional: true
+            - name: CONTACT_FROM_EMAIL
+              value: "Portfolio Contact <contact@warrenmac.com>"
+            # Bearer token for /api/internal/sync-resume (endpoint returns 404 until set)
+            - name: RESUME_SYNC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: portfolio-app
+                  key: resumeSyncToken
+                  optional: true
+            # Only used when ENABLE_PASSWORD_GATE=true; the gate fails closed without it
+            - name: SITE_ACCESS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: portfolio-app
+                  key: siteAccessPassword
                   optional: true
           ports:
             - name: http

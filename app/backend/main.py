@@ -8,16 +8,18 @@ import time
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Response
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from guardrails import validate_input, telemetry
+from guardrails import RateLimiter, validate_input, telemetry
+from security import add_security_headers, get_client_ip, is_production, secrets_match
+import contact
 from gemini_client import GEMINI_MODEL, query_gemini
 from resume_loader import sync_resume_now, get_current_resume, STORAGE_BACKEND
 from mlflow_client import init_mlflow, log_chat_trace, log_resume_sync_event
 from prometheus_fastapi_instrumentator import Instrumentator
 from metrics import (
+    CONTACT_SUBMISSIONS_TOTAL,
     LLM_INFERENCE_DURATION_SECONDS,
     LLM_QUERIES_TOTAL,
     RESUME_CHARACTERS,
@@ -57,23 +59,22 @@ app = FastAPI(
     title="Warren McDonald - AI DevSecOps Portfolio",
     description="Fortified AI Resume Agent on Kubernetes with OWASP LLM Guardrails",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # Interactive API docs pull assets from a CDN (blocked by our CSP) and map the attack surface
+    docs_url=None if is_production() else "/docs",
+    redoc_url=None if is_production() else "/redoc",
+    openapi_url=None if is_production() else "/openapi.json",
 )
 
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
+# No CORS middleware: the frontend is served from this same origin, so browsers
+# should refuse cross-origin reads of the API entirely.
+app.middleware("http")(add_security_headers)
 
 @app.middleware("http")
 async def protect_metrics_endpoint(request: Request, call_next):
     """Restricts /metrics to internal cluster traffic when running in production."""
     if request.url.path == "/metrics":
-        if os.getenv("STORAGE_BACKEND") == "gcs" or os.getenv("ENVIRONMENT") == "production":
+        if is_production():
             if request.headers.get("x-forwarded-for"):
                 return Response(status_code=403, content="Forbidden: Internal metrics endpoint only")
     return await call_next(request)
@@ -87,11 +88,21 @@ instrumentator = Instrumentator(
 instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 @app.post("/api/internal/sync-resume")
-async def trigger_resume_sync():
+async def trigger_resume_sync(request: Request):
     """
     On-demand sync endpoint for GCS Object Finalize webhooks or manual triggers.
     Enables zero-downtime hot reloading without waiting for the polling interval.
+    Requires `Authorization: Bearer <RESUME_SYNC_TOKEN>`; disabled entirely when no token is set.
     """
+    expected_token = os.getenv("RESUME_SYNC_TOKEN", "")
+    if not expected_token:
+        raise HTTPException(status_code=404, detail="Not Found")
+    auth_header = request.headers.get("authorization", "")
+    scheme, _, provided_token = auth_header.partition(" ")
+    if scheme.lower() != "bearer" or not secrets_match(provided_token.strip(), expected_token):
+        telemetry.record_event("UNAUTHORIZED_SYNC", f"Rejected resume sync from IP {get_client_ip(request)}")
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Bearer"})
+
     updated, message = sync_resume_now()
     RESUME_CHARACTERS.set(len(get_current_resume()))
     RESUME_SYNC_TOTAL.labels(status="updated" if updated else "unchanged").inc()
@@ -110,9 +121,15 @@ async def get_resume_status():
         "preview": get_current_resume()[:300] + "..."
     }
 
-# Password Gate Configuration (Feature Flag: disabled by default)
+# Password Gate Configuration (Feature Flag: disabled by default).
+# No default password: an enabled gate without SITE_ACCESS_PASSWORD rejects every attempt.
 ENABLE_PASSWORD_GATE = os.getenv("ENABLE_PASSWORD_GATE", "false").lower() == "true"
-SITE_ACCESS_PASSWORD = os.getenv("SITE_ACCESS_PASSWORD", "devsecops2026")
+SITE_ACCESS_PASSWORD = os.getenv("SITE_ACCESS_PASSWORD", "")
+if ENABLE_PASSWORD_GATE and not SITE_ACCESS_PASSWORD:
+    print("WARNING: ENABLE_PASSWORD_GATE is set but SITE_ACCESS_PASSWORD is empty; all access attempts will be rejected.")
+
+# Brute-force protection for the passcode
+auth_rate_limiter = RateLimiter(max_requests=5, window_seconds=300)
 
 class AuthVerifyRequest(BaseModel):
     password: str
@@ -123,11 +140,15 @@ async def get_auth_status():
     return {"enabled": ENABLE_PASSWORD_GATE}
 
 @app.post("/api/auth/verify")
-async def verify_password(payload: AuthVerifyRequest):
+async def verify_password(request: Request, payload: AuthVerifyRequest):
     """Verifies the passcode against the configured access password."""
     if not ENABLE_PASSWORD_GATE:
         return {"success": True, "message": "Gate disabled"}
-    if payload.password == SITE_ACCESS_PASSWORD:
+    client_ip = get_client_ip(request)
+    if not auth_rate_limiter.is_allowed(client_ip):
+        telemetry.record_event("RATE_LIMIT", f"IP {client_ip} exceeded passcode attempt limit")
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+    if secrets_match(payload.password, SITE_ACCESS_PASSWORD):
         return {"success": True, "message": "Access granted"}
     return {"success": False, "message": "Invalid access code. Please try again."}
 
@@ -153,12 +174,8 @@ async def get_security_stats():
 async def chat_endpoint(request: Request, payload: ChatRequest):
     start_time = time.perf_counter()
 
-    # Extract client IP (handling reverse proxies / load balancers)
-    client_ip = (
-        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        or request.client.host
-        or "127.0.0.1"
-    )
+    # Resolve client IP behind the trusted load balancer (see security.get_client_ip)
+    client_ip = get_client_ip(request)
 
     user_message = payload.message.strip()
     if not user_message:
@@ -212,6 +229,45 @@ async def chat_endpoint(request: Request, payload: ChatRequest):
         status="ok",
         reason=""
     )
+
+class ContactRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: str = Field(..., max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    company: str = Field("", max_length=120)
+    message: str = Field(..., min_length=10, max_length=5000)
+    website: str = Field("", max_length=200)  # Honeypot: hidden from humans, bots fill it in
+
+@app.post("/api/contact")
+async def contact_endpoint(request: Request, payload: ContactRequest):
+    client_ip = get_client_ip(request)
+
+    # Silently accept bot submissions so they don't learn to skip the honeypot
+    if payload.website:
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="spam").inc()
+        telemetry.record_event("CONTACT_SPAM", f"Honeypot triggered from IP {client_ip}")
+        return {"success": True}
+
+    if not contact.contact_rate_limiter.is_allowed(client_ip):
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="rate_limited").inc()
+        telemetry.record_event("RATE_LIMIT", f"IP {client_ip} exceeded contact form limit")
+        raise HTTPException(status_code=429, detail="Too many messages. Please try again later or reach out on LinkedIn.")
+
+    if not contact.is_configured():
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="unconfigured").inc()
+        raise HTTPException(status_code=503, detail="Contact form is temporarily unavailable. Please reach out on LinkedIn.")
+
+    sent = await contact.send_contact_email(
+        name=payload.name.strip(),
+        email=payload.email.strip(),
+        company=payload.company.strip(),
+        message=payload.message.strip(),
+    )
+    if not sent:
+        CONTACT_SUBMISSIONS_TOTAL.labels(status="error").inc()
+        raise HTTPException(status_code=502, detail="Your message couldn't be delivered. Please try again or reach out on LinkedIn.")
+
+    CONTACT_SUBMISSIONS_TOTAL.labels(status="sent").inc()
+    return {"success": True}
 
 # Mount frontend static assets if available
 frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")

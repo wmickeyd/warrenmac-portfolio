@@ -50,13 +50,23 @@ An enterprise-grade, cloud-native AI DevSecOps portfolio running on Kubernetes (
 3. **In-Flight Guardrails & Canary Defense:**
    * **Ingress Guardrail:** Regex and heuristic inspection intercepts adversarial jailbreaks (`"ignore all instructions"`, roleplay escapes) before calling the LLM.
    * **Canary Token Monitoring:** Injects a dynamic cryptographic canary token into system instructions; egress scanner intercepts any response attempting to leak the prompt.
-   * **Denial of Wallet Protection:** In-memory sliding window client IP rate-limiter prevents abuse.
+   * **Denial of Wallet Protection:** In-memory sliding window client IP rate-limiter prevents abuse. Client IPs are resolved from only the load balancer's trusted `X-Forwarded-For` hops (`XFF_TRUSTED_HOPS`), so a spoofed header can't dodge the limit.
 
 4. **Kubernetes Hardening (Restricted Pod Security Standard):**
    * Non-root execution (`UID 10001:10001`).
    * Immutable root filesystem (`readOnlyRootFilesystem: true`).
    * All Linux capabilities dropped (`drop: ["ALL"]`).
    * Zero-Trust `NetworkPolicy` restricting egress strictly to DNS (`53`) and Google APIs (`443`).
+
+5. **HTTP & API Hardening:**
+   * Strict Content-Security-Policy with no `'unsafe-inline'`, plus HSTS, `X-Frame-Options: DENY`, `nosniff`, Referrer-Policy and Permissions-Policy on every response.
+   * Same-origin only: no CORS headers are issued, and interactive API docs are disabled in production.
+   * Internal endpoints require a bearer token (constant-time compare) and fail closed when unconfigured; the optional password gate has no default and is brute-force rate limited.
+
+6. **Software Supply Chain:**
+   * Every GitHub Action pinned to a full commit SHA; base images pinned by digest; Dependabot keeps both current.
+   * Blocking Trivy gates on secrets, dependencies, Kubernetes manifests and the built image (fixable HIGH/CRITICAL).
+   * Production deploys the exact image digest that was signed, after `cosign verify` checks it came from this repo's `main` pipeline.
 
 ---
 
@@ -125,8 +135,10 @@ env:
 Code changes merged to `main` trigger the automated CI/CD pipeline in `.github/workflows/ci-cd.yaml`:
 1. **Adversarial & Functional Tests**: Runs Pytest across LLM guardrails, API routes, and loaders.
 2. **Security & IaC Audits**: Trivy secret detection (blocking gate) and dependency vulnerability scan.
-3. **Container Build, Scan & Attestation**: Multi-stage build pushed to GHCR, scanned by Trivy, and signed keylessly with **Sigstore Cosign**.
-4. **Automated GKE Continuous Deployment**: GitHub Actions authenticates keylessly via **Google Cloud Workload Identity Federation**, applies manifests, updates the deployment to the signed commit SHA (`ghcr.io/wmickeyd/warrenmac-portfolio:sha-<SHA>`), and verifies zero-downtime rollout with `kubectl rollout status`.
+3. **Container Build, Scan & Attestation**: Multi-stage build pushed to GHCR, scanned by Trivy (blocking on fixable HIGH/CRITICAL), and signed keylessly with **Sigstore Cosign**.
+4. **Automated GKE Continuous Deployment**: GitHub Actions authenticates keylessly via **Google Cloud Workload Identity Federation**, runs `cosign verify` on the signed digest, renders it into the manifest (`ghcr.io/wmickeyd/warrenmac-portfolio@sha256:<digest>`), applies once, and verifies zero-downtime rollout with `kubectl rollout status`.
+
+> `k8s/portfolio.yaml` holds a digest placeholder that CI rewrites, so it is not meant to be applied by hand.
 
 ### 5. Infrastructure as Code Automation (Terraform GitOps)
 Changes to infrastructure in `terraform/` trigger `.github/workflows/terraform.yaml`:
@@ -139,8 +151,9 @@ Whenever you get a new job or earn a new certification:
 # 1. Upload new PDF to your GCS bucket
 gcloud storage cp new-resume.pdf gs://warrenmac-resume-storage/resume.pdf
 
-# 2. (Optional) Force immediate sync without waiting for the 30s background poll:
-curl -X POST https://warrenmac.com/api/internal/sync-resume
+# 2. (Optional) Force immediate sync without waiting for the 30s background poll
+#    (token from the `portfolio-app` secret; the endpoint returns 404 if no token is configured):
+curl -X POST -H "Authorization: Bearer $RESUME_SYNC_TOKEN" https://warrenmac.com/api/internal/sync-resume
 ```
 The agent and website will instantly reflect your new career achievements with **zero downtime and zero redeployment**.
 
