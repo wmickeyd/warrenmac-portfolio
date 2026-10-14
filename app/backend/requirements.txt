@@ -7,4 +7,4 @@ pypdf==6.20.0
 google-cloud-storage==2.19.0
 mlflow-skinny>=2.14.0
 prometheus-fastapi-instrumentator==8.1.0
-prometheus-client==0.21.1
+prometheus-client==0.26.0
