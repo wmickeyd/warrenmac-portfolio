@@ -15,7 +15,7 @@ from guardrails import RateLimiter, validate_input, telemetry
 from security import add_security_headers, get_client_ip, is_production, secrets_match
 import contact
 from gemini_client import GEMINI_MODEL, query_gemini
-from resume_loader import sync_resume_now, get_current_resume, STORAGE_BACKEND
+from resume_loader import sync_resume_now, get_current_resume, get_current_resume_pdf, STORAGE_BACKEND
 from mlflow_client import init_mlflow, log_chat_trace, log_resume_sync_event
 from prometheus_fastapi_instrumentator import Instrumentator
 from metrics import (
@@ -120,6 +120,23 @@ async def get_resume_status():
         "active_length_chars": len(get_current_resume()),
         "preview": get_current_resume()[:300] + "..."
     }
+
+# Served from memory: the root filesystem is read-only in production, so the
+# synced PDF can't be written into the static frontend directory.
+@app.api_route("/warren-mcdonald-resume.pdf", methods=["GET", "HEAD"])
+async def download_resume_pdf():
+    pdf_bytes, file_hash = get_current_resume_pdf()
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="Resume not available")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="Warren-McDonald-Resume.pdf"',
+            "ETag": f'"{file_hash}"',
+            "Cache-Control": "public, max-age=300",
+        },
+    )
 
 # Password Gate Configuration (Feature Flag: disabled by default).
 # No default password: an enabled gate without SITE_ACCESS_PASSWORD rejects every attempt.

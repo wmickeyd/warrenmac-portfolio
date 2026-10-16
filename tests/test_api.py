@@ -4,6 +4,7 @@ Test Suite for FastAPI Endpoints & Security Controls
 
 import pytest
 from fastapi.testclient import TestClient
+import resume_loader
 from main import app
 
 client = TestClient(app)
@@ -77,3 +78,19 @@ def test_metrics_forbidden_with_forwarded_for_in_production(monkeypatch):
     response = client.get("/metrics", headers={"x-forwarded-for": "203.0.113.195"})
     assert response.status_code == 403
 
+
+def test_resume_pdf_served_from_memory(monkeypatch):
+    pdf = b"%PDF-1.4 test resume"
+    monkeypatch.setattr(resume_loader, "_active_pdf_bytes", pdf)
+    monkeypatch.setattr(resume_loader, "_last_file_hash", "abc123")
+    response = client.get("/warren-mcdonald-resume.pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["etag"] == '"abc123"'
+    assert response.content == pdf
+    assert client.head("/warren-mcdonald-resume.pdf").status_code == 200
+
+def test_resume_pdf_404_when_not_loaded(monkeypatch):
+    monkeypatch.setattr(resume_loader, "_active_pdf_bytes", None)
+    response = client.get("/warren-mcdonald-resume.pdf")
+    assert response.status_code == 404

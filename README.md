@@ -41,7 +41,7 @@ An enterprise-grade, cloud-native AI DevSecOps portfolio running on Kubernetes (
 
 1. **Zero-Redeployment Dynamic Ingestion:**
    * When a new `resume.pdf` is uploaded to Google Cloud Storage (or the local storage mount), the application detects the SHA256 change, validates and parses the document, and hot-reloads it in-memory.
-   * Both the interactive AI chatbot and the downloadable static PDF (`/warren-mcdonald-resume.pdf`) are updated immediately without restarting pods.
+   * Both the interactive AI chatbot and the downloadable PDF (`/warren-mcdonald-resume.pdf`, served from memory so the container filesystem can stay read-only) are updated immediately without restarting pods.
 
 2. **Ingestion Security & Indirect Prompt Injection Defense (OWASP LLM01):**
    * Verifies `%PDF-` magic bytes and rejects files > 10MB (preventing decompression bombs).
