@@ -13,8 +13,14 @@ updates:
     directory: "/app"
     schedule:
       interval: "weekly"
+    groups:
+      docker:
+        patterns: ["*"]
 
   - package-ecosystem: "pip"
     directory: "/app/backend"
     schedule:
       interval: "weekly"
+    groups:
+      pip:
+        patterns: ["*"]
