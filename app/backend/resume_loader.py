@@ -37,6 +37,7 @@ LOCAL_RESUME_PATH = os.getenv(
 # In-memory cached state
 _active_resume_text: str = FALLBACK_RESUME
 _last_file_hash: str = ""
+_active_pdf_bytes: Optional[bytes] = None
 
 # Indirect prompt injection signatures (attacker embedding instructions into uploaded PDF)
 INDIRECT_INJECTION_PATTERNS = [
@@ -123,7 +124,7 @@ def sync_resume_now() -> Tuple[bool, str]:
     Fetches the resume from storage, verifies it, and updates the in-memory context.
     Returns (updated_or_unchanged, status_message).
     """
-    global _active_resume_text, _last_file_hash
+    global _active_resume_text, _last_file_hash, _active_pdf_bytes
 
     pdf_bytes = _fetch_from_gcs() if STORAGE_BACKEND == "gcs" else _fetch_from_local()
     if not pdf_bytes:
@@ -139,16 +140,6 @@ def sync_resume_now() -> Tuple[bool, str]:
         logger.error(f"Resume validation failed: {result}")
         return False, f"Validation failed: {result}"
 
-    # If backend is GCS, update the local static frontend copy so web downloads stay in sync
-    if STORAGE_BACKEND == "gcs":
-        try:
-            os.makedirs(os.path.dirname(LOCAL_RESUME_PATH), exist_ok=True)
-            with open(LOCAL_RESUME_PATH, "wb") as f:
-                f.write(pdf_bytes)
-            logger.info("Updated local static copy from GCS")
-        except Exception as e:
-            logger.warning(f"Could not write static copy: {e}")
-
     # Format into knowledge base context
     formatted_resume = f"""# Warren David McDonald - AI DevSecOps Engineer
 
@@ -162,6 +153,7 @@ def sync_resume_now() -> Tuple[bool, str]:
 
     _active_resume_text = formatted_resume
     _last_file_hash = new_hash
+    _active_pdf_bytes = pdf_bytes
 
     telemetry.record_event("RESUME_HOT_RELOADED", f"Successfully reloaded resume (SHA256: {new_hash[:8]}...)")
     log_resume_sync_event(
@@ -176,4 +168,8 @@ def sync_resume_now() -> Tuple[bool, str]:
 def get_current_resume() -> str:
     """Returns the current active resume text (dynamic or fallback)."""
     return _active_resume_text
+
+def get_current_resume_pdf() -> Tuple[Optional[bytes], str]:
+    """Returns the last validated resume PDF bytes (None if never loaded) and its SHA256 hash."""
+    return _active_pdf_bytes, _last_file_hash
 
