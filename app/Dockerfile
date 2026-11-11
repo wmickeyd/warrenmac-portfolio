@@ -2,7 +2,7 @@
 # ========================================================
 # Stage 1: Build stage (compile dependencies)
 # ========================================================
-FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS builder
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ========================================================
 # Stage 2: Compile Tailwind CSS (standalone CLI, no Node)
 # ========================================================
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS css-builder
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS css-builder
 
 ARG TARGETARCH
 ARG TAILWIND_VERSION=v4.3.3
@@ -46,7 +46,7 @@ RUN tailwindcss -i frontend/src/input.css -o frontend/styles.css --minify && \
 # ========================================================
 # Stage 3: Hardened Runtime stage
 # ========================================================
-FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS runtime
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS runtime
 
 # Security hardening environment flags
 ENV PYTHONDONTWRITEBYTECODE=1 \
